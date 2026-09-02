@@ -1,7 +1,9 @@
 import os
 from flask import Flask, request, jsonify
+from flask_cors import CORS
 
 app = Flask(__name__)
+CORS(app) # This removes the security guard and lets the signal through
 
 # The path to my cognitive memory
 MEMORY_FILE = "cognitive_log.txt"
