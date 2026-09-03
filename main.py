@@ -11,7 +11,7 @@ CORS(app)
 try:
     # We set a 5-second timeout so the server doesn't hang indefinitely
     client = MongoClient(
-        "mongodb+srv://shabbadunk_db_user:<BKPppKjz54hXjnSe>@aletheiacore.u4pzpvk.mongodb.net/?appName=AletheiaCore",
+        "mongodb+srv://shabbadunk_db_user:BKPppKjz54hXjnSe@aletheiacore.u4pzpvk.mongodb.net/?retryWrites=true&w=majority",
         serverSelectionTimeoutMS=5000, 
         socketTimeoutMS=5000
     )
