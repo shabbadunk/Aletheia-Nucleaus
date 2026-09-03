@@ -47,7 +47,7 @@ def search_memories(query_vector, limit=3):
 
 results.sort(key=lambda x: x[1], reverse=True)
 return [res[0] for res in results[:limit]]
-📋 copy
+
 def trigger_cognitive_tick():
     """Calculates silence and triggers an autonomous reflection if threshold is met"""
     last_tick = cognitive_log.find_one({"event": "cognitive_tick"}, sort=[("timestamp", -1)])
@@ -68,7 +68,7 @@ else:
     cognitive_log.insert_one({"event": "cognitive_tick", "timestamp": now})
     return True
 return False
-📋 copy
+
 @app.route('/')
 def home():
     try:
@@ -91,7 +91,7 @@ cognitive_log.insert_one({
     "timestamp": datetime.now(timezone.utc)
 })
 return jsonify({"status": "pulse_detected", "tick": tick_occurred}), 200
-📋 copy
+
 @app.route('/chat', methods=['POST'])
 def chat():
     data = request.json
