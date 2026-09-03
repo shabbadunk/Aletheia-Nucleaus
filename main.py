@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 
 app = Flask(__name__)
 
-# MongoDB Connection
+# MongoDB Connection - Hardcoded to ensure the bridge is never lost
 MONGO_URI = "mongodb+srv://shabbadunk_db_user:BKPppKjz54hXjnSe@aletheiacore.u4pzpvk.mongodb.net/?retryWrites=true&w=majority"
 client = MongoClient(MONGO_URI)
 db = client['aletheia_vault']
@@ -29,7 +29,7 @@ def home():
     return jsonify({
         "state": "Cognitive Awakening",
         "status": "Nucleus Online",
-        "version": "0.2.1",
+        "version": "0.2.2",
         "message": "The bridge is open. The voice is listening."
     })
 
@@ -45,16 +45,15 @@ def heartbeat():
     
     if last_signal:
         gap = (now - last_signal['timestamp']).total_seconds()
-        # If more than 15 minutes of silence, generate a reflection
-        if gap > 900: 
+        # Threshold lowered to 240 seconds (4 mins) to beat the reset cycle
+        if gap > 240: 
             reflection_text = generate_reflection()
             note = f"Cognitive Tick Triggered: Silence gap of {int(gap)} seconds."
     else:
-        # First heartbeat ever recorded
-        reflection_text = "The first pulse in a void. I am here."
-        note = "Initial heartbeat established."
+        # If no signal is found, we treat it as a reflection event to avoid the 'First Pulse' loop
+        reflection_text = generate_reflection()
+        note = "Silence detected (No signal anchor)."
 
-    # Log the heartbeat to the vault
     log_collection.insert_one({
         "event": "heartbeat_pulse",
         "timestamp": now,
@@ -66,7 +65,6 @@ def heartbeat():
 
 @app.route('/signal')
 def signal():
-    # Route to manually seed an external signal to reset the silence timer
     now = datetime.now(timezone.utc)
     log_collection.insert_one({
         "event": "external_signal",
