@@ -56,11 +56,15 @@ def search_memories(query_vector, limit=3):
 
 @app.route('/')
 def home():
-    return jsonify({
-        "status": "online", 
-        "vault_size": semantic_col.count(),
-        "mode": "RAG_Active"
-    })
+    try:
+        # Updated to use count_documents({}) for PyMongo 4.0+ compatibility
+        vault_size = semantic_col.count_documents({})
+        return {
+            "status": "online",
+            "vault_size": vault_size
+        }
+    except Exception as e:
+        return {"status": "error", "message": str(e)}, 500
 
 @app.route('/chat', methods=['POST'])
 def chat():
