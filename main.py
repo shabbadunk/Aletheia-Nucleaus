@@ -48,4 +48,3 @@ def signal():
         return jsonify({"status": "success", "message": f"Memory anchored: {content}"}), 200
     except Exception as e:
         return jsonify({"status": "error", "details": str(e)}), 500
-    app.run(host='0.0.0.0', port=10000)
