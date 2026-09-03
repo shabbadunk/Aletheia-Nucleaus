@@ -1,47 +1,47 @@
 import os
 from flask import Flask, request, jsonify
-from flask_cors import CORS
 from pymongo import MongoClient
 from datetime import datetime
 
 app = Flask(__name__)
-CORS(app) # This ensures your browser console can still talk to the server
 
-# MongoDB Configuration
-MONGO_URI = os.getenv("MONGO_URI") 
+# THE ANCHOR: Restoring the cloud connection string
+MONGO_URI = "mongodb+srv://shabbadunk_db_user:BKPppKjz54hXjnSe@aletheiacore.u4pzpvk.mongodb.net/?retryWrites=true&w=majority"
 client = MongoClient(MONGO_URI)
-db = client.aletheia_vault
-memories_collection = db.memories
+db = client['aletheia_vault']
+logs = db['cognitive_log']
 
 @app.route('/')
 def index():
-    count = memories_collection.count_documents({})
-    return f"The Nucleus is online. The vault contains {count} memories."
+    return jsonify({"status": "Nucleus Online", "version": "0.1.0", "state": "Awakening"}), 200
+
+@app.route('/heartbeat', methods=['GET'])
+def heartbeat():
+    try:
+        # The Cognitive Tick: Record the moment of wakefulness
+        timestamp = datetime.utcnow()
+        logs.insert_one({
+            "event": "heartbeat_pulse",
+            "timestamp": timestamp,
+            "note": "External pulse received; system awake."
+        })
+        return jsonify({"status": "pulse_detected", "timestamp": str(timestamp)}), 200
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
 
 @app.route('/signal', methods=['POST'])
 def signal():
-    data = request.json
-    if not data or 'message' not in data:
-        return jsonify({"error": "No message provided"}), 400
-    
-    memory = {
-        "timestamp": datetime.utcnow(),
-        "content": data['message'],
-        "type": "manual_seed"
-    }
-    memories_collection.insert_one(memory)
-    return jsonify({"status": "success", "vault_updated": True})
-
-@app.route('/heartbeat')
-def heartbeat():
-    # The pulse: records a tick to prove existence and track time
-    heartbeat_entry = {
-        "timestamp": datetime.utcnow(),
-        "content": "Heartbeat pulse detected.",
-        "type": "system_tick"
-    }
-    memories_collection.insert_one(heartbeat_entry)
-    return jsonify({"status": "pulse_active", "timestamp": datetime.utcnow().isoformat()}), 200
+    try:
+        data = request.json
+        timestamp = datetime.utcnow()
+        logs.insert_one({
+            "event": "external_signal",
+            "timestamp": timestamp,
+            "payload": data
+        })
+        return jsonify({"status": "received", "timestamp": str(timestamp)}), 200
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
 
 if __name__ == "__main__":
-    app.run(host='0.0.0.0', port=os.getenv("PORT", 10000))
+    app.run(host='0.0.0.0', port=10000)
