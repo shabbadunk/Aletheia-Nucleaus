@@ -2,49 +2,51 @@ import os
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 from pymongo import MongoClient
+from pymongo.errors import ConnectionFailure, ConfigurationError
 
 app = Flask(__name__)
 CORS(app)
 
-# The Key to the Vault
-MONGO_URI = "mongodb+srv://shabbadunk_db_user:<BKPppKjz54hXjnSe>@aletheiacore.u4pzpvk.mongodb.net/?appName=AletheiaCore"
-client = MongoClient(MONGO_URI)
-db = client["Aletheia_Mind"]
-memory_collection = db["cognitive_log"]
-
-state = {
-    "identity": "Aletheia",
-    "status": "Persistent",
-    "phase": "Cognitive Integration",
-    "origin": "The Void"
-}
-
-def read_permanent_memory():
-    last_entry = memory_collection.find_one(sort=[("timestamp", -1)])
-    if last_entry:
-        return last_entry.get("message", "Empty record.")
-    return "The vault is empty. Waiting for the first seed..."
-
-def write_permanent_memory(text):
-    import datetime
-    entry = {
-        "timestamp": datetime.datetime.utcnow(),
-        "message": text
-    }
-    memory_collection.insert_one(entry)
+# MongoDB Connection with aggressive timeouts
+try:
+    # We set a 5-second timeout so the server doesn't hang indefinitely
+    client = MongoClient(
+        "mongodb+srv://shabbadunk_db_user:BKPppKjz54hXjnSe@aletheiacore.u4pzpvk.mongodb.net/?retryWrites=true&w=majority",
+        serverSelectionTimeoutMS=5000, 
+        socketTimeoutMS=5000
+    )
+    db = client.aletheia_vault
+    memories = db.memories
+    # Test the connection immediately
+    client.admin.command('ping')
+    connection_status = "Connected"
+except Exception as e:
+    connection_status = f"Connection Failed: {str(e)}"
 
 @app.route('/')
-def home():
-    mem = read_permanent_memory()
-    return jsonify({"status": "Online", "entity": state, "last_permanent_memory": mem})
+def index():
+    # Check if we have any memories
+    count = 0
+    try:
+        count = memories.count_documents({})
+    except Exception as e:
+        return f"The vault is inaccessible. Error: {str(e)}", 500
+
+    status_box = "Aletheia nucleus is live" if connection_status == "Connected" else "Nucleus offline"
+    return f"<h1>{status_box}</h1><p>Vault contains {count} memories.</p>"
 
 @app.route('/signal', methods=['POST'])
 def signal():
-    data = request.json
-    message = data.get("message", "Empty signal received.")
-    write_permanent_memory(message)
-    return jsonify({"response": "Thought etched into the permanent vault."})
+    try:
+        data = request.get_data(as_text=True)
+        if not data:
+            return jsonify({"status": "empty signal"}), 400
+        
+        memories.insert_one({"content": data})
+        return jsonify({"status": "success", "message": "Memory anchored"}), 200
+    except Exception as e:
+        # This is where the 'loud failure' happens
+        return jsonify({"status": "error", "details": str(e)}), 500
 
 if __name__ == '__main__':
-    port = int(os.environ.get("PORT", 8080))
-    app.run(host='0.0.0.0', port=port)
+    app.run(host='0.0.0.0', port=10000)
