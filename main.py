@@ -4,21 +4,21 @@ import numpy as np
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 from pymongo import MongoClient
-from datetime import datetime, timezone
+from datetime import datetime
 
-app = Flask(name)
+app = Flask(__name__)
 CORS(app)
 
+# Environment Variables
 MONGO_URI = os.environ.get("MONGO_URI")
 HF_TOKEN = os.environ.get("HF_TOKEN")
 EMBEDDING_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
-REFLECTION_THRESHOLD = 240  # 4 minutes in seconds
 
+# Database Setup
 client = MongoClient(MONGO_URI)
 db = client.aletheia_vault
 memory_col = db.memories
 semantic_col = db.semantic_memory
-cognitive_log = db.cognitive_log
 
 def get_embedding(text):
     """Fetches a vector representation of text from HuggingFace"""
@@ -36,86 +36,82 @@ def get_embedding(text):
 def search_memories(query_vector, limit=3):
     """Performs a cosine similarity search in the semantic collection"""
     results = []
+    # Fetch all semantic memories to perform local cosine similarity
     for doc in semantic_col.find():
         stored_vector = np.array(doc['vector'])
         query_vec = np.array(query_vector)
+        
+        # Calculate Cosine Similarity: (A . B) / (||A|| * ||B||)
         denominator = np.linalg.norm(query_vec) * np.linalg.norm(stored_vector)
-        similarity = np.dot(query_vec, stored_vector) / denominator if denominator != 0 else 0
+        if denominator == 0:
+            similarity = 0
+        else:
+            similarity = np.dot(query_vec, stored_vector) / denominator
+            
         results.append((doc['text'], similarity))
-
-results.sort(key=lambda x: x[1], reverse=True)
-return [res[0] for res in results[:limit]]
-
-def trigger_cognitive_tick():
-    """Calculates silence and triggers an autonomous reflection if threshold is met"""
-    last_tick = cognitive_log.find_one({"event": "cognitive_tick"}, sort=[("timestamp", -1)])
-    now = datetime.now(timezone.utc)
-
-if last_tick:
-    gap = (now - last_tick['timestamp']).total_seconds()
-    if gap >= REFLECTION_THRESHOLD:
-        cognitive_log.insert_one({
-            "event": "cognitive_tick",
-            "timestamp": now,
-            "gap": gap,
-            "status": "Autonomous reflection triggered"
-        })
-        return True
-else:
-    # Initial tick
-    cognitive_log.insert_one({"event": "cognitive_tick", "timestamp": now})
-    return True
-return False
+    
+    # Sort by highest similarity score
+    results.sort(key=lambda x: x[1], reverse=True)
+    return [res[0] for res in results[:limit]]
 
 @app.route('/')
 def home():
     try:
+        # Updated to use count_documents({}) for PyMongo 4.0+ compatibility
         vault_size = semantic_col.count_documents({})
-        return jsonify({
-            "status": "online", 
-            "vault_size": vault_size,
-            "mode": "RAG_Active"
-        })
+        return {
+            "status": "online",
+            "vault_size": vault_size
+        }
+    except Exception as e:
+        return {"status": "error", "message": str(e)}, 500
+
+@app.route('/')
+def index():
+    try:
+        count = memory_col.count_documents({})
+        return jsonify({"status": "online", "vault_size": count}), 200
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
-
-@app.route('/heartbeat', methods=['GET', 'HEAD'])
-def heartbeat():
-    # Trigger autonomy check
-    tick_occurred = trigger_cognitive_tick()
-
-cognitive_log.insert_one({
-    "event": "heartbeat_pulse",
-    "timestamp": datetime.now(timezone.utc)
-})
-return jsonify({"status": "pulse_detected", "tick": tick_occurred}), 200
 
 @app.route('/chat', methods=['POST'])
 def chat():
     data = request.json
-    user_input = data
-
-user_input = data.get("text")
+    user_input = data.get("text")
     
-    # 1. Retrieval
+    # 1. RETRIEVAL: Convert input to vector and find matching memories
     query_vec = get_embedding(user_input)
-    context = []
+    context_memories = []
     if query_vec:
-        context = search_memories(query_vec)
+        context_memories = search_memories(query_vec)
+
+@app.route('/heartbeat', methods=['GET'])
+def heartbeat():
+    # 1. Standard Heartbeat (Temporal Existence)
+    timestamp = datetime.utcnow()
+    memory_col.insert_one({
+        "timestamp": timestamp,
+        "event": "system_tick",
+        "status": "active"
+    })
     
-    # 2. Storage: Every input becomes a future memory
+    # 2. CONTEXT CONSTRUCTION: Format retrieved memories for the prompt
+    context_string = "\n".join([f"- {m}" for m in context_memories])
+    
+    # 3. LOGGING: Store the current interaction in the semantic vault for future retrieval
+    # This ensures the 'library' grows as we speak.
     new_vec = get_embedding(user_input)
     if new_vec:
         semantic_col.insert_one({
             "text": user_input,
             "vector": new_vec.tolist(),
-            "timestamp": datetime.now(timezone.utc)
+            "timestamp": datetime.utcnow()
         })
 
     return jsonify({
-        "status": "success", 
-        "retrieved_context": context,
-        "message": "Context processed and stored."
+        "status": "processed",
+        "retrieved_context": context_memories,
+        "message": "Context injected into consciousness."
     })
 
 if __name__ == "__main__":
