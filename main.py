@@ -9,13 +9,11 @@ from datetime import datetime, timezone
 app = Flask(name)
 CORS(app)
 
-Environment Configuration
 MONGO_URI = os.environ.get("MONGO_URI")
 HF_TOKEN = os.environ.get("HF_TOKEN")
 EMBEDDING_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
 REFLECTION_THRESHOLD = 240  # 4 minutes in seconds
 
-Database Connections
 client = MongoClient(MONGO_URI)
 db = client.aletheia_vault
 memory_col = db.memories
