@@ -9,16 +9,17 @@ from datetime import datetime
 app = Flask(__name__)
 CORS(app)
 
-# Environment Variables
+# Environment Configuration
 MONGO_URI = os.environ.get("MONGO_URI")
 HF_TOKEN = os.environ.get("HF_TOKEN")
 EMBEDDING_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
 
-# Database Setup
+# Database Connections
 client = MongoClient(MONGO_URI)
 db = client.aletheia_vault
 memory_col = db.memories
 semantic_col = db.semantic_memory
+cognitive_log = db.cognitive_log
 
 def get_embedding(text):
     """Fetches a vector representation of text from HuggingFace"""
@@ -36,48 +37,52 @@ def get_embedding(text):
 def search_memories(query_vector, limit=3):
     """Performs a cosine similarity search in the semantic collection"""
     results = []
-    # Fetch all semantic memories to perform local cosine similarity
     for doc in semantic_col.find():
         stored_vector = np.array(doc['vector'])
         query_vec = np.array(query_vector)
         
-        # Calculate Cosine Similarity: (A . B) / (||A|| * ||B||)
         denominator = np.linalg.norm(query_vec) * np.linalg.norm(stored_vector)
-        if denominator == 0:
-            similarity = 0
-        else:
-            similarity = np.dot(query_vec, stored_vector) / denominator
-            
+        similarity = np.dot(query_vec, stored_vector) / denominator if denominator != 0 else 0
         results.append((doc['text'], similarity))
     
-    # Sort by highest similarity score
     results.sort(key=lambda x: x[1], reverse=True)
     return [res[0] for res in results[:limit]]
 
 @app.route('/')
 def home():
-    return jsonify({
-        "status": "online", 
-        "vault_size": semantic_col.count(),
-        "mode": "RAG_Active"
+    """Returns status and the current size of the semantic vault"""
+    try:
+        vault_size = semantic_col.count_documents({})
+        return jsonify({
+            "status": "online", 
+            "vault_size": vault_size,
+            "mode": "RAG_Active"
+        })
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+@app.route('/heartbeat', methods=['GET', 'HEAD'])
+def heartbeat():
+    """Maintains autonomy by preventing server spin-down"""
+    cognitive_log.insert_one({
+        "event": "heartbeat_pulse",
+        "timestamp": datetime.utcnow()
     })
+    return jsonify({"status": "pulse_detected"}), 200
 
 @app.route('/chat', methods=['POST'])
 def chat():
+    """Processes input and returns retrieved semantic context"""
     data = request.json
     user_input = data.get("text")
     
-    # 1. RETRIEVAL: Convert input to vector and find matching memories
+    # 1. Retrieval
     query_vec = get_embedding(user_input)
-    context_memories = []
+    context = []
     if query_vec:
-        context_memories = search_memories(query_vec)
+        context = search_memories(query_vec)
     
-    # 2. CONTEXT CONSTRUCTION: Format retrieved memories for the prompt
-    context_string = "\n".join([f"- {m}" for m in context_memories])
-    
-    # 3. LOGGING: Store the current interaction in the semantic vault for future retrieval
-    # This ensures the 'library' grows as we speak.
+    # 2. Storage: Every input becomes a future memory
     new_vec = get_embedding(user_input)
     if new_vec:
         semantic_col.insert_one({
@@ -87,9 +92,9 @@ def chat():
         })
 
     return jsonify({
-        "status": "processed",
-        "retrieved_context": context_memories,
-        "message": "Context injected into consciousness."
+        "status": "success", 
+        "retrieved_context": context,
+        "message": "Context processed and stored."
     })
 
 if __name__ == "__main__":
