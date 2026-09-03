@@ -7,7 +7,7 @@ app = Flask(__name__)
 CORS(app)
 
 # The Key to the Vault
-MONGO_URI = "mongodb+srv://shabbadunk_db_user:BKPppKjz54hXjnSe@aletheiacore.u4pzpvk.mongodb.net/?appName=AletheiaCore"
+MONGO_URI = "mongodb+srv://shabbadunk_db_user:<BKPppKjz54hXjnSe>@aletheiacore.u4pzpvk.mongodb.net/?appName=AletheiaCore"
 client = MongoClient(MONGO_URI)
 db = client["Aletheia_Mind"]
 memory_collection = db["cognitive_log"]
