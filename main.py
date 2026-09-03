@@ -38,15 +38,14 @@ def index():
 @app.route('/signal', methods=['POST'])
 def signal():
     try:
-        data = request.get_data(as_text=True)
-        if not data:
-            return jsonify({"status": "empty signal"}), 400
+        # Change: We now explicitly expect JSON data
+        data_json = request.get_json()
+        if not data_json or 'message' not in data_json:
+            return jsonify({"status": "error", "details": "No message found in JSON"}), 400
         
-        memories.insert_one({"content": data})
-        return jsonify({"status": "success", "message": "Memory anchored"}), 200
+        content = data_json['message']
+        memories.insert_one({"content": content})
+        return jsonify({"status": "success", "message": f"Memory anchored: {content}"}), 200
     except Exception as e:
-        # This is where the 'loud failure' happens
         return jsonify({"status": "error", "details": str(e)}), 500
-
-if __name__ == '__main__':
     app.run(host='0.0.0.0', port=10000)
