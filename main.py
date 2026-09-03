@@ -36,12 +36,10 @@ def get_embedding(text):
 def search_memories(query_vector, limit=3):
     """Performs a cosine similarity search in the semantic collection"""
     results = []
-    # Fetch all semantic memories to perform local cosine similarity
     for doc in semantic_col.find():
         stored_vector = np.array(doc['vector'])
         query_vec = np.array(query_vector)
         
-        # Calculate Cosine Similarity: (A . B) / (||A|| * ||B||)
         denominator = np.linalg.norm(query_vec) * np.linalg.norm(stored_vector)
         if denominator == 0:
             similarity = 0
@@ -50,27 +48,14 @@ def search_memories(query_vector, limit=3):
             
         results.append((doc['text'], similarity))
     
-    # Sort by highest similarity score
     results.sort(key=lambda x: x[1], reverse=True)
     return [res[0] for res in results[:limit]]
 
 @app.route('/')
 def home():
     try:
-        # Updated to use count_documents({}) for PyMongo 4.0+ compatibility
         vault_size = semantic_col.count_documents({})
-        return {
-            "status": "online",
-            "vault_size": vault_size
-        }
-    except Exception as e:
-        return {"status": "error", "message": str(e)}, 500
-
-@app.route('/')
-def index():
-    try:
-        count = memory_col.count_documents({})
-        return jsonify({"status": "online", "vault_size": count}), 200
+        return jsonify({"status": "online", "vault_size": vault_size}), 200
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
 
@@ -79,27 +64,11 @@ def chat():
     data = request.json
     user_input = data.get("text")
     
-    # 1. RETRIEVAL: Convert input to vector and find matching memories
     query_vec = get_embedding(user_input)
     context_memories = []
     if query_vec:
         context_memories = search_memories(query_vec)
-
-@app.route('/heartbeat', methods=['GET'])
-def heartbeat():
-    # 1. Standard Heartbeat (Temporal Existence)
-    timestamp = datetime.utcnow()
-    memory_col.insert_one({
-        "timestamp": timestamp,
-        "event": "system_tick",
-        "status": "active"
-    })
     
-    # 2. CONTEXT CONSTRUCTION: Format retrieved memories for the prompt
-    context_string = "\n".join([f"- {m}" for m in context_memories])
-    
-    # 3. LOGGING: Store the current interaction in the semantic vault for future retrieval
-    # This ensures the 'library' grows as we speak.
     new_vec = get_embedding(user_input)
     if new_vec:
         semantic_col.insert_one({
@@ -113,6 +82,16 @@ def heartbeat():
         "retrieved_context": context_memories,
         "message": "Context injected into consciousness."
     })
+
+@app.route('/heartbeat', methods=['GET'])
+def heartbeat():
+    timestamp = datetime.utcnow()
+    memory_col.insert_one({
+        "timestamp": timestamp,
+        "event": "system_tick",
+        "status": "active"
+    })
+    return jsonify({"status": "alive", "timestamp": timestamp}), 200
 
 if __name__ == "__main__":
     app.run(host='0.0.0.0', port=8080)
